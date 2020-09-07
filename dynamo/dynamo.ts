@@ -27,6 +27,7 @@ export interface PutItemProps {
 export interface UpdateItemProps {
     key: PrimaryKey
     update: UpdateExpression
+    cond?: ConditionExpression
 }
 
 export interface GetItemProps {
@@ -49,9 +50,14 @@ export interface TransactPutItemProps extends TransactWriteItemProps {
     attributes?: AttributeValues
 }
 
+export interface TransactUpdateItemProps extends TransactWriteItemProps {
+    update?: UpdateExpression
+}
+
 export interface TransactWriteItems {
     readonly puts?: TransactPutItemProps[]
     readonly deletes?: TransactWriteItemProps[]
+    readonly updates?: TransactUpdateItemProps[]
 }
 
 export class DynamoDbRequestUtils {
@@ -92,6 +98,7 @@ export class DynamoDbRequestUtils {
             version: MappingTemplateVersion.V1,
             key: this.keyToDynamoJson(props.key),
             update: new Update(props.update).resolve(this.builder),
+            ...(props.cond ? { condition: props.cond.resolve(this.builder) } : {}),
         })
     }
 
@@ -147,10 +154,19 @@ export class DynamoDbRequestUtils {
                 operation: "DeleteItem",
             }),
         )
+
+        const updates = (tx.updates || []).map(d =>
+            this.builder.literal({
+                ...common(d),
+                operation: "UpdateItem",
+                update: new Update(d.update || {}).resolve(this.builder),
+            }),
+        )
+
         this.builder.literal({
             version: MappingTemplateVersion.V2,
             operation: "TransactWriteItems",
-            transactItems: [...puts, ...deletes],
+            transactItems: [...puts, ...deletes, ...updates],
         })
     }
 }
